@@ -31,6 +31,8 @@ export { useTransferStreamRecipient } from './hooks/useTransferStreamRecipient.j
 export type { UseTransferStreamRecipientResult, TransferRecipientFn } from './hooks/useTransferStreamRecipient.js';
 export { useClawbackStream } from './hooks/useClawbackStream.js';
 export type { UseClawbackStreamResult, ClawbackStreamFn } from './hooks/useClawbackStream.js';
+export { useClawbackStreamMutation, useStreamClawbackMutation } from './hooks/useClawbackStreamMutation.js';
+export type { UseClawbackStreamMutationResult, ClawbackMutationOptions, ClawbackStatus } from './hooks/useClawbackStreamMutation.js';
 export { useBatchWithdraw } from './hooks/useBatchWithdraw.js';
 export type { UseBatchWithdrawState, UseBatchWithdrawResult, BatchWithdrawFn } from './hooks/useBatchWithdraw.js';
 export { useConduitBatcher } from './hooks/useConduitBatcher.js';

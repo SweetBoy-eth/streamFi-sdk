@@ -54,6 +54,7 @@ import type { StreamHistoryOptions, StreamHistoryPage } from './events.js';
 import { buildBatchTransactions } from './batch-tx.js';
 import type { BatchTransactionContext } from './batch-tx.js';
 import { FactoryModule } from './factory.js';
+import { withSignatureTimeout } from './signer.js';
 import { mapWithConcurrency, DEFAULT_LIST_CONCURRENCY } from './map-with-concurrency.js';
 import {
   ConduitError,
@@ -1198,9 +1199,10 @@ export class StreamsModule {
 
   private async _signTx(tx: Transaction): Promise<Transaction> {
     if (this.activeWallet) {
-      const signed = await this.activeWallet.signTransaction(tx, {
-        networkPassphrase: this.passphrase,
-      });
+      const signed = await withSignatureTimeout(
+        this.activeWallet.signTransaction(tx, { networkPassphrase: this.passphrase }),
+        this.config.signerOptions?.signatureTimeoutMs,
+      );
       if (signed == null) {
         throw new Error('Wallet adapter signTransaction returned null or undefined');
       }
@@ -1215,7 +1217,10 @@ export class StreamsModule {
       // signed Transaction. Honour the return value when it is a Transaction;
       // returning `tx` unconditionally dropped the signature for
       // immutable-style signers, submitting an unsigned transaction (#519).
-      const result = await signer.sign(tx);
+      const result = await withSignatureTimeout(
+        signer.sign(tx),
+        this.config.signerOptions?.signatureTimeoutMs,
+      );
       return result instanceof Transaction ? result : tx;
     }
     if (this.config.keypair) {

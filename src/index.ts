@@ -43,8 +43,8 @@ export type {
   IndexerPageInfo,
   FetchStreamsBySenderOptions,
 } from './indexer.js';
-export { KeypairSigner, LedgerSigner, LedgerErrorType, LedgerHardwareError, normalizeLedgerError, classifyLedgerError } from './signer.js';
-export type { Signer } from './signer.js';
+export { withSignatureTimeout, DEFAULT_SIGNATURE_TIMEOUT_MS, KeypairSigner, LedgerSigner, LedgerErrorType, LedgerHardwareError, normalizeLedgerError, classifyLedgerError } from './signer.js';
+export type { Signer, SignerOptions } from './signer.js';
 export {
    SorobanRpcError,
    ConduitError,
@@ -68,6 +68,8 @@ export {
    GovernorInvalidParamError,
    BackdatedStreamError,
    ConfirmationTimeoutError,
+   SignatureTimeoutError,
+   isRecoverableError,
    IndexerMaxPagesExceededError,
    isConduitError,
    SUPPORTED_NETWORKS,

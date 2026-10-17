@@ -94,6 +94,27 @@ function addressField(val: xdr.ScVal | undefined): string {
   }
 }
 
+// ── Deduplication ─────────────────────────────────────────────────────────────
+
+/** Bounded insertion-ordered set of recently seen event IDs (oldest evicted first). */
+class RecentIdWindow {
+  private readonly ids = new Set<string>();
+  constructor(private readonly size: number) {}
+
+  /** Returns `true` if `id` was already seen; otherwise records it and returns `false`. */
+  seen(id: string | undefined): boolean {
+    if (this.size <= 0 || !id) return false;
+    if (this.ids.has(id)) return true;
+    this.ids.add(id);
+    if (this.ids.size > this.size) {
+      this.ids.delete(this.ids.values().next().value as string);
+    }
+    return false;
+  }
+}
+
+const DEFAULT_DEDUP_WINDOW = 1000;
+
 // ── Subscription ──────────────────────────────────────────────────────────────
 
 /**
@@ -126,6 +147,7 @@ export function subscribeToStream(
   // Guard against recursive gap detection while a replay is in flight.
   let   isReplaying = false;
   let   lastSequence: bigint | undefined;
+  const recentIds              = new RecentIdWindow(handlers.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW);
 
   /**
    * Backfill events whose sequence falls inside a detected gap.
@@ -154,6 +176,7 @@ export function subscribeToStream(
         .sort((a, b) => (a.seq < b.seq ? -1 : a.seq > b.seq ? 1 : 0));
 
       for (const item of missed) {
+        if (recentIds.seen(item.event.id)) continue;
         dispatchIsolated(item.event, handlers);
       }
     } catch (err) {
@@ -193,6 +216,7 @@ export function subscribeToStream(
 
       if (response.events.length > 0) {
         for (const event of response.events) {
+          if (recentIds.seen(event.id)) continue;
           const sequence = dispatchIsolated(event, handlers);
           if (sequence !== undefined) {
             if (lastSequence !== undefined && sequence !== lastSequence + 1n) {

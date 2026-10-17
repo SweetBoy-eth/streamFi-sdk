@@ -1,4 +1,35 @@
 import { Keypair, Transaction } from '@stellar/stellar-sdk';
+import { SignatureTimeoutError } from './errors.js';
+
+/** Default time (ms) to wait for a wallet/signer to return a signature. */
+export const DEFAULT_SIGNATURE_TIMEOUT_MS = 120_000;
+
+export interface SignerOptions {
+  /**
+   * Max time (ms) to wait for a signature before rejecting with
+   * {@link SignatureTimeoutError}. Default 120000. Set to `0` or `Infinity`
+   * to wait indefinitely.
+   */
+  signatureTimeoutMs?: number;
+}
+
+/**
+ * Races `pending` against a timer so a wallet popup that is never answered
+ * cannot leave the caller hanging forever.
+ */
+export function withSignatureTimeout<T>(
+  pending: Promise<T> | T,
+  timeoutMs: number = DEFAULT_SIGNATURE_TIMEOUT_MS,
+): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return Promise.resolve(pending);
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SignatureTimeoutError(timeoutMs)), timeoutMs);
+    Promise.resolve(pending).then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
 
 export interface Signer {
   /**

@@ -904,6 +904,25 @@ export class ConfirmationTimeoutError extends Error {
   }
 }
 
+// ── Signature timeout ─────────────────────────────────────────────────────────
+
+/**
+ * Thrown when a wallet or signer does not produce a signature within the
+ * configured `signatureTimeoutMs` — e.g. the user opened a wallet popup and
+ * forgot about it or closed it without rejecting.
+ */
+export class SignatureTimeoutError extends Error {
+  /** The timeout window in milliseconds that was exceeded. */
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Signature request timed out after ${timeoutMs}ms without a response from the wallet or signer.`);
+    this.name = 'SignatureTimeoutError';
+    this.timeoutMs = timeoutMs;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 // ── Type guard ────────────────────────────────────────────────────────────────
 
 /**
@@ -930,6 +949,8 @@ export class ConfirmationTimeoutError extends Error {
  * - {@link DurationTooShortError}
  * - {@link BackdatedStreamError}
  * - {@link ConfirmationTimeoutError}
+ * - {@link SignatureTimeoutError}
+ * - {@link CircuitOpenError}
  * - {@link ValidationError}
  * - {@link IndexerMaxPagesExceededError}
  */
@@ -954,6 +975,8 @@ export function isConduitError(value: unknown): value is Error {
     'DurationTooShortError',
     'BackdatedStreamError',
     'ConfirmationTimeoutError',
+    'SignatureTimeoutError',
+    'CircuitOpenError',
     'ValidationError',
     'IndexerMaxPagesExceededError',
    ].includes(value.name);
@@ -1187,4 +1210,59 @@ export class IndexerMaxPagesExceededError extends Error {
     this.maxPages = maxPages;
     Object.setPrototypeOf(this, new.target.prototype);
   }
+}
+
+// ── Recoverable error classification ─────────────────────────────────────────
+
+const RECOVERABLE_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RECOVERABLE_NODE_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED', 'ETIMEDOUT', 'ENOTFOUND',
+  'EAI_AGAIN', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT',
+]);
+const RECOVERABLE_ERROR_NAMES = new Set([
+  'RateLimitError', 'RpcServiceUnavailableError', 'StreamFiNetworkError',
+  'IndexerTimeoutError', 'ConfirmationTimeoutError', 'CircuitOpenError', 'TimeoutError',
+]);
+
+function isRecoverableOnce(err: unknown): boolean | undefined {
+  if (err === null || typeof err !== 'object') return undefined;
+  const e = err as {
+    name?: unknown; code?: unknown; status?: unknown;
+    response?: { status?: unknown };
+  };
+
+  if (typeof e.name === 'string' && RECOVERABLE_ERROR_NAMES.has(e.name)) return true;
+  // The caller cancelled; retrying would defy their intent.
+  if (e.name === 'OperationAbortedError' || e.name === 'AbortError') return false;
+  // Typed SDK errors that are not transport-related (contract rejections,
+  // validation, signature timeouts) will fail identically on retry.
+  if (isConduitError(err)) return false;
+
+  const status = typeof e.status === 'number' ? e.status : e.response?.status;
+  if (typeof status === 'number') return RECOVERABLE_HTTP_STATUSES.has(status);
+
+  // JSON-RPC style numeric codes mirror the HTTP status (see RateLimitError).
+  if (typeof e.code === 'number') return RECOVERABLE_HTTP_STATUSES.has(e.code) ? true : undefined;
+  if (typeof e.code === 'string' && RECOVERABLE_NODE_CODES.has(e.code)) return true;
+
+  // `fetch` rejects with a bare TypeError when the network is unreachable.
+  if (err instanceof TypeError && /failed to fetch|network|load failed/i.test(err.message)) return true;
+  return undefined;
+}
+
+/**
+ * Returns `true` when `err` represents a transient failure that is worth
+ * retrying or failing over to another RPC endpoint: rate limits, 408/425/429/5xx
+ * HTTP statuses, socket-level errors (`ECONNRESET`, `ETIMEDOUT`, …), timeouts,
+ * and an open circuit. Contract errors, validation errors, user aborts and
+ * unknown values return `false`. The `cause` chain is followed.
+ */
+export function isRecoverableError(err: unknown): boolean {
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current != null; depth++) {
+    const verdict = isRecoverableOnce(current);
+    if (verdict !== undefined) return verdict;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }

@@ -26,6 +26,8 @@ export interface ConduitConfig {
   wallet?: import('../adapters/types.js').WalletAdapter;
   /** Custom signer plugin (KMS/HSM). Takes precedence over keypair when set. */
   signer?: Signer;
+  /** Signing behaviour for wallet adapters and custom signers (e.g. `signatureTimeoutMs`). */
+  signerOptions?: import('../signer.js').SignerOptions;
   /** Override default Soroban RPC URL */
   rpcUrl?: string;
   /** Override deployed DripFactory contract ID */
@@ -329,6 +331,11 @@ export interface StreamEventHandlers {
   onGap?:      (gap: EventGap)     => void;
   /** Polling interval in ms; default 5000 */
   pollInterval?: number;
+  /**
+   * Number of recent event IDs remembered to drop duplicates delivered by
+   * overlapping `getEvents` ledger ranges. Default 1000; `0` disables.
+   */
+  dedupWindowSize?: number;
   /**
    * Upper bound (ms) for the exponential backoff delay applied between
    * retries after consecutive polling failures. Default 60000.
